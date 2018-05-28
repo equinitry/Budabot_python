@@ -1,12 +1,10 @@
 from core.decorators import instance
 import os
+import time
 
 
 @instance()
 class AltsManager:
-    UNVALIDATED = 0
-    VALIDATED = 1
-    MAIN = 2
 
     def __init__(self):
         pass
@@ -20,40 +18,37 @@ class AltsManager:
         pass
 
     def get_alts(self, char_id):
-        sql = "SELECT p.*, a.group_id, a.status FROM player p " \
-              "LEFT JOIN alts a ON p.char_id = a.char_id " \
-              "WHERE p.char_id = ? OR a.group_id = (" \
-              "SELECT group_id FROM alts WHERE status >= ? AND char_id = ?) " \
-              "ORDER BY a.status DESC, p.level DESC"
+        player = self.db.query("SELECT * FROM player WHERE char_id = ?", [char_id])
+        if player:
+            if player.group_id > 0:
+                return player
+            else
+                sql = "SELECT p.* FROM player WHERE p.group_id = ? " \
+                    # this shows main as first
+                    "ORDER BY (char_id = (SELECT main_id FROM alts a WHERE a.group_id = ? ) ) DESC, level DESC" 
+                return self.db.query(sql, [player.group_id, player.group_id])
+        else return None;
 
-        return self.db.query(sql, [char_id, self.VALIDATED, char_id])
-
-    def add_alt(self, sender_char_id, alt_char_id):
-        alt_row = self.get_alt_status(alt_char_id)
-        if alt_row:
+    def add_alt(self, sender_char_id, alt_char_id, direct_add = False, force_add = False):
+        # get char infos
+        sender = self.pork_manager.load_character_info(sender_char_id)
+        new_alt = self.pork_manager.load_character_info(alt_char_id)
+        # if one doesnt exist return -> return extended info...
+        if (not sender or not new_alt):
             return False
-
-        sender_row = self.get_alt_status(sender_char_id)
-        if sender_row:
-            if sender_row.status == self.MAIN or sender_row.status == self.VALIDATED:
-                params = [alt_char_id, sender_row.group_id, self.VALIDATED]
-            else:
-                params = [alt_char_id, sender_row.group_id, self.UNVALIDATED]
+        # new_alt is already registered to someone else and no force add (for example admin wants change something)
+        if (new_alt.group_id > 0 and not force_add):
+            return False
+        # sender has no alts yet
+        if sender.group_id == 0:
+            self.create_group_id(sender_char_id)
+            sender = self.pork_manager.load_character_info(sender_char_id)
+        # add alts without check?
+        if not direct_add:
+            return self.db.exec("INSERT INTO alts_validate (sender_id , new_alt_id , time) VALUES (? , ? , ?)", [sender_char_id, alt_char_id,time.time()])
+        # add without check
         else:
-            # main does not exist, create entry for it
-            group_id = self.get_next_group_id()
-            self.db.exec("INSERT INTO alts (char_id, group_id, status) VALUES (?, ?, ?)",
-                         [sender_char_id, group_id, self.MAIN])
-
-            # make sure char info exists in character table
-            self.pork_manager.load_character_info(sender_char_id)
-
-            params = [alt_char_id, group_id, self.VALIDATED]
-
-        # make sure char info exists in character table
-        self.pork_manager.load_character_info(alt_char_id)
-        self.db.exec("INSERT INTO alts (char_id, group_id, status) VALUES (?, ?, ?)", params)
-        return True
+            return self.db.exec("UPDATE player SET group_id = ? WHERE char_id = ?", [sender.group_id, alt_char_id])
 
     def remove_alt(self, sender_char_id, alt_char_id):
         alt_row = self.get_alt_status(alt_char_id)
@@ -69,10 +64,19 @@ class AltsManager:
 
         self.db.exec("DELETE FROM alts WHERE char_id = ?", [alt_char_id])
         return True
+    
+    def change_main(self, new_main_id):
+        # get char infos
+        new_main = self.pork_manager.load_character_info(new_main_id)
+        # if one doesnt exist return -> return extended info...
+        if (not new_main or new_main.group_id == 0):
+            return False
+        # update database
+        return self.db.exec("UPDATE alts SET main_id = ? WHERE group_id = ", [new_main_id, new_main.group_id])
 
-    def get_alt_status(self, char_id):
-        return self.db.query_single("SELECT group_id, status FROM alts WHERE char_id = ?", [char_id])
-
-    def get_next_group_id(self):
-        row = self.db.query_single("SELECT (IFNULL(MAX(group_id), 0) + 1) AS next_group_id FROM alts")
-        return row.next_group_id
+    def create_group_id(self, char_id):
+        self.db.exec("INSERT INTO alts (main_id) VALUES (?)", [char_id]);
+        # depending on database implementation might this approach might not be threadsafe! add an extra function that directly returns the id
+        group_id = self.db.lastrowid
+        return self.db.exec("UPDATE player SET group_id = ? WHERE char_id = ?", [group_id, char_id])
+    
