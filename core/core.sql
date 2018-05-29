@@ -4,3 +4,14 @@ CREATE TABLE IF NOT EXISTS timer_event (event_type VARCHAR(50) NOT NULL, event_s
 CREATE TABLE IF NOT EXISTS setting (name VARCHAR(50) NOT NULL, value VARCHAR(255) NOT NULL, description VARCHAR(255) NOT NULL, module VARCHAR(50) NOT NULL, verified TINYINT NOT NULL);
 CREATE TABLE IF NOT EXISTS command_alias (alias VARCHAR(50) NOT NULL, command VARCHAR(1024) NOT NULL, enabled TINYINT NOT NULL);
 CREATE TABLE IF NOT EXISTS access_ranks (access_level INT PRIMARY_KEY, name VARCHAR(20) NOT NULL, name_short VARCHAR(20) NOT NULL, description VARCHAR(100) NOT NULL);
+INSERT OR IGNORE INTO access_ranks VALUES (0,  'banned', 'banned', 'Totally no access');
+INSERT OR IGNORE INTO access_ranks VALUES (10, 'enemy', 'enemy', 'No Access');
+INSERT OR IGNORE INTO access_ranks VALUES (20, 'all', 'all', 'No Access');
+INSERT OR IGNORE INTO access_ranks VALUES (30, 'guest', 'guest', 'Guest');
+INSERT OR IGNORE INTO access_ranks VALUES (40, 'member', 'member', 'Normal member');
+INSERT OR IGNORE INTO access_ranks VALUES (50, 'emergency rl', 'erl', 'Minimal rl access');
+INSERT OR IGNORE INTO access_ranks VALUES (60, 'raidleader', 'rl', 'Service bitch');
+INSERT OR IGNORE INTO access_ranks VALUES (70, 'moderator', 'mod', 'Could do almost all nec');
+INSERT OR IGNORE INTO access_ranks VALUES (80, 'admin', 'admin', 'Almost total access');
+INSERT OR IGNORE INTO access_ranks VALUES (90, 'superadmin', 'sa', 'Has total access to everything');
+INSERT OR IGNORE INTO access_ranks VALUES (100, 'owner', 'owner', 'Owner of the bot');
