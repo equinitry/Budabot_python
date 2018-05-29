@@ -10,6 +10,16 @@ import os
 
 @instance()
 class PorkManager:
+    #database mapping for later
+    funcom_lookup_xml = [
+			{"firstname": "firstname"}, {"lastname": "lastname"}, {"level": "level"}, {"defender_rank": "defender_rank"},  {"defender_rank_id": "defender_rank_id"}, {"breed": "breed"},
+			{"gender": "gender"}, {"faction": "faction"}, {"profession": "profession"}, {"profession_title": "profession_title"}, {"organization_id": "organization_id"},
+			{"organization_name": "organization_name"}, {"rank_id": "rank_id"}, {"rank": "rank"}]
+	funcom_lookup_json = [{"FIRSTNAME": "firstname"}, {"LASTNAME": "lastname"}, {"LEVELX": "level"}, {"RANK_name": "defender_rank"}, {"ALIENLEVEL": "defender_rank_id"}, {"BREED": "breed"},
+			{"SEX": "gender"}, {"SIDE": "faction"}, {"PROF": "profession"}, {"PROFNAME": "profession_title"}, {"ORG_INSTANCE": "organization_id"},
+			{"NAME": "organization_name"}, {"RANK": "rank_id"}, {"RANK_TITLE": "rank"},
+			{"CHAR_INSTANCE": "user_id"}]
+
     def __init__(self):
         self.logger = Logger("pork_manager")
 
@@ -50,7 +60,9 @@ class PorkManager:
             self.logger.warning("Error marshalling value as json: %s" % r.text, e)
             json = None
 
-        if json:
+        # char_id have to match or at least be higher!
+        #TODO mapping
+        if (json and json[0]["CHAR_INSTANCE"]>=char_id):
             char_info_json = json[0]
             org_info_json = json[1] if json[1] else {}
 
@@ -119,31 +131,33 @@ class PorkManager:
             self.save_character_info(char_info)
 
     def save_character_info(self, char_info):
-        self.db.exec("DELETE FROM player WHERE char_id = ?", [char_info.char_id])
+        # create sql string with db mapping array
+        update_sql = "UPDATE player SET "
+        insert_sql = "INSERT INTO player ("
+        for map_json, map_db in funcom_lookup_json:
+            if(map_db != "char_id" and map_db != "last_updated" and char_info.contains(map_db)):
+                update_sql += map_db + " = ? ,"
+                update_objects.append(char_info.get(map_db))
+                insert_sql += map_db + " ,"
+                insert_sql_val += " ? ,"
+        # dont forget update time
+        update_sql += "last_updated = ? WHERE char_id = ? "
+        insert_sql += "last_updated , char_id ) VALUES ( " + insert_sql_val + " ? , ?)"
+        update_objects.append(int(time.time()))
+        update_objects.append(char_info.char_id)
 
-        insert_sql = """
-            INSERT INTO player ( char_id, name, first_name, last_name, level, breed, gender, faction, profession,
-                profession_title, ai_rank, ai_level, org_id, org_name, org_rank_name, org_rank_id, dimension, head_id,
-                pvp_rating, pvp_title, source, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-
-        self.db.exec(insert_sql, [char_info.char_id, char_info.name, char_info.first_name, char_info.last_name, char_info.level, char_info.breed, char_info.gender,
-                                  char_info.faction, char_info.profession, char_info.profession_title, char_info.ai_rank, char_info.ai_level, char_info.org_id, char_info.org_name,
-                                  char_info.org_rank_name, char_info.org_rank_id, char_info.dimension, char_info.head_id, char_info.pvp_rating, char_info.pvp_title,
-                                  char_info.source, int(time.time())])
+        # update OR insert
+        if (self.db.exec(update_sql, update_objects)==0):
+            if (self.db.exec(insert_sql, update_objects)):
+                return True
+            else return False
+        else return True
 
     def get_from_database(self, char_id=None, char_name=None):
         if char_id:
-            return self.db.query_single("SELECT char_id, name, first_name, last_name, level, breed, gender, faction, profession, "
-                                        "profession_title, ai_rank, ai_level, org_id, org_name, org_rank_name, org_rank_id, "
-                                        "dimension, head_id, pvp_rating, pvp_title, source, last_updated "
-                                        "FROM player WHERE char_id = ?", [char_id])
+            return self.db.query_single("SELECT *, IFNULL((SELECT max(access_level) FROM player WHERE p.group_id>0 AND group_id = p.group_id), p.access_lvl ) highest_access FROM player p WHERE char_id = ?", [char_id])
         elif char_name:
-            return self.db.query_single("SELECT char_id, name, first_name, last_name, level, breed, gender, faction, profession, "
-                                        "profession_title, ai_rank, ai_level, org_id, org_name, org_rank_name, org_rank_id, "
-                                        "dimension, head_id, pvp_rating, pvp_title, source, last_updated "
-                                        "FROM player WHERE name = ?", [char_name])
+            return self.db.query_single("SELECT *, IFNULL((SELECT max(access_level) FROM player WHERE p.group_id>0 AND group_id = p.group_id), p.access_lvl ) highest_access FROM player p WHERE name = ?", [char_name])
         else:
             return None
 

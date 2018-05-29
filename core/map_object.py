@@ -9,6 +9,13 @@ class MapObject:
         else:
             return val
 
+    def contains(self, name):
+        val = self.row[name]
+        if isinstance(val, name):
+            return True
+        else:
+            return False
+
     def __getitem__(self, name):
         return self.get_row_value(name)
 

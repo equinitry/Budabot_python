@@ -5,12 +5,10 @@ from core.logger import Logger
 @instance()
 class AccessManager:
     def __init__(self):
-        self.access_levels = [
-            {"label": "none", "level": 0, "handler": self.no_access},
-            {"label": "all", "level": 100, "handler": self.all_access}]
         self.logger = Logger("access_manager")
 
     def inject(self, registry):
+        self.db = registry.get_instance("db")
         self.character_manager = registry.get_instance("character_manager")
         self.alts_manager = registry.get_instance("alts_manager")
 
@@ -20,53 +18,27 @@ class AccessManager:
         self.access_levels = sorted(self.access_levels, key=lambda k: k["level"])
 
     def get_access_levels(self):
-        return self.access_levels
+        acclvls = self.db.query("SELECT * FROM access_ranks ORDER BY access_level DESC");
+        if len(acclvls) > 0:
+            for row in acclvls:
+                result.append(["name":row.name, "access_level":row.access_level, "name_short":row.name_short, "description":row.description])
+        return result
 
     def get_access_level(self, char):
-        char_id = self.character_manager.resolve_char_to_id(char)
-        if not char_id:
-            return None
-
-        access_level1 = self.get_single_access_level(char_id)
-
-        alts = self.alts_manager.get_alts(char_id)
-        if not alts:
-            return access_level1
-
-        main = alts[0]
-        if main.char_id == char_id:
-            return access_level1
-        else:
-            access_level2 = self.get_single_access_level(main.char_id)
-            if access_level1["level"] < access_level2["level"]:
-                return access_level1
-            else:
-                return access_level2
-
-    def get_single_access_level(self, char):
-        char_id = self.character_manager.resolve_char_to_id(char)
-        for access_level in self.access_levels:
-            if access_level["handler"](char_id):
-                return access_level
+        return char.access_level
 
     def get_access_level_by_level(self, level):
-        for access_level in self.access_levels:
-            if access_level["level"] == level:
-                return access_level
-        return None
+        row = self.db.query_single("SELECT * FROM access_ranks WHERE access_level == ?", [level])
+        if row:
+            return row
+        else: return None
 
     def get_access_level_by_label(self, label):
-        label = label.lower()
-        for access_level in self.access_levels:
-            if access_level["label"] == label:
-                return access_level
-        return None
+        row = self.db.query_single("SELECT access_level FROM access_ranks WHERE name LIKE ?", [label])
+        if row:
+            return row.access_level
+        else: return None
 
     def check_access(self, char, access_level_label):
-        return self.get_access_level(char)["level"] <= self.get_access_level_by_label(access_level_label)["level"]
-
-    def no_access(self, char_id):
-        return False
-
-    def all_access(self, char_id):
-        return True
+        return char.highest_access <= self.get_access_level_by_label(access_level_label)["level"]
+        #return self.get_access_level(char)["level"] <= self.get_access_level_by_label(access_level_label)["level"]
